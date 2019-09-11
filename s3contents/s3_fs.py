@@ -49,7 +49,7 @@ class S3FS(GenericFS):
             config=True, env="JPYNB_S3_BUCKET")
     signature_version = Unicode(help="").tag(config=True)
     sse = Unicode(help="Type of server-side encryption to use").tag(config=True)
-
+    sse_kms_key_id = Unicode(help="Exact KMS key to be used").tag(config=True)
     prefix = Unicode("", help="Prefix path inside the specified bucket").tag(config=True)
     delimiter = Unicode("/", help="Path delimiter").tag(config=True)
 
@@ -62,10 +62,30 @@ class S3FS(GenericFS):
         default_value=None
     ).tag(config=True, env="JPYNB_S3_SESSION_TOKEN")
 
+    def refresh_fs_connection(self):
+        with open("/secrets/config.env") as fp:
+            for line in fp:
+                # print(line)
+                key, value = line.replace('"', '').replace(
+                    'export ', '', 1).strip().split('=', 1)
+                print(key + " " + value)
+                if key == "AWS_ACCESS_KEY_ID":
+                    self.access_key_id = value
+                elif key == "AWS_SECRET_ACCESS_KEY":
+                    self.secret_access_key = value
+                elif key == "AWS_SESSION_TOKEN":
+                    self.session_token = value
+                elif key == "AWS_S3_BUCKET":
+                    self.bucket = value
+                elif key == "AWS_REGION":
+                    self.region_name = value
+                elif key == "AWS_S3_KMS_KEY_ARN":
+                    self.sse_kms_key_id = value
+
     def __init__(self, log, **kwargs):
         super(S3FS, self).__init__(**kwargs)
         self.log = log
-
+        self.refresh_fs_connection()
         client_kwargs = {
             "endpoint_url": self.endpoint_url,
             "region_name": self.region_name,
@@ -76,6 +96,7 @@ class S3FS(GenericFS):
         s3_additional_kwargs = {}
         if self.sse:
             s3_additional_kwargs["ServerSideEncryption"] = self.sse
+            s3_additional_kwargs["SSEKMSKeyId"] = self.sse_kms_key_id
 
         self.fs = s3fs.S3FileSystem(key=self.access_key_id,
                                     secret=self.secret_access_key,
@@ -103,6 +124,9 @@ class S3FS(GenericFS):
 
     def ls(self, path=""):
         path_ = self.path(path)
+        self.log.debug("S3contents.S3FS Auto Reload ls: Started")
+        self.refresh_fs_connection()
+        self.log.debug("S3contents.S3FS Auto Reload ls: Completed")
         self.log.debug("S3contents.S3FS: Listing directory: `%s`", path_)
         files = self.fs.ls(path_, refresh=True)
         return self.unprefix(files)
@@ -175,13 +199,13 @@ class S3FS(GenericFS):
     def mkdir(self, path):
         path_ = self.path(path, self.dir_keep_file)
         self.log.debug("S3contents.S3FS: Making dir: `%s`", path_)
-        self.fs.touch(path_)
+        self.fs.touch(path_, acl='private')
 
     def read(self, path):
         path_ = self.path(path)
         if not self.isfile(path):
             raise NoSuchFile(path_)
-        with self.fs.open(path_, mode='rb') as f:
+        with self.fs.open(path_, mode='rb', acl='private') as f:
             content = f.read().decode("utf-8")
         return content
 
@@ -210,13 +234,13 @@ class S3FS(GenericFS):
             raise HTTPError(
                 400, u'Encoding error saving %s: %s' % (path_, e)
             )
-        with self.fs.open(path_, mode='wb') as f:
+        with self.fs.open(path_, mode='wb', acl='private') as f:
             f.write(content_)
 
     def writenotebook(self, path, content):
         path_ = self.path(self.unprefix(path))
         self.log.debug("S3contents.S3FS: Writing notebook: `%s`", path_)
-        with self.fs.open(path_, mode='wb') as f:
+        with self.fs.open(path_, mode='wb', acl='private') as f:
             f.write(content.encode("utf-8"))
 
     #  Utilities -------------------------------------------------------------------------------------------------------
