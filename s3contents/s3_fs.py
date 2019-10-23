@@ -143,7 +143,7 @@ class S3FS(GenericFS):
         else:
             try:
                 # Info will fail if path is a dir
-                self.fs.info(path_, refresh=True)
+                self.fs.info(path_)
                 is_file = True
             except FileNotFoundError:
                 pass
@@ -161,7 +161,7 @@ class S3FS(GenericFS):
         else:
             try:
                 # Info will fail if path is a dir
-                self.fs.info(path_, refresh=True)
+                self.fs.info(path_)
                 is_dir = False
             except FileNotFoundError:
                 is_dir = True
@@ -213,7 +213,7 @@ class S3FS(GenericFS):
 
     def lstat(self, path):
         path_ = self.path(path)
-        info = self.fs.info(path_, refresh=True)
+        info = self.fs.info(path_)
         ret = {}
         ret["ST_MTIME"] = info["LastModified"]
         return ret
